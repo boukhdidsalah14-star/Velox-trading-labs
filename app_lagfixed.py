@@ -171,9 +171,42 @@ def http_json(url, timeout=12):
         return json.loads(response.read().decode('utf-8'))
 
 def fetch_binance_klines(symbol, limit=120, interval='15m'):
-    url = 'https://api.binance.com/api/v3/klines?' + urlencode({'symbol': symbol, 'interval': interval, 'limit': limit})
-    data = http_json(url)
-    return [{'open':float(x[1]), 'high':float(x[2]), 'low':float(x[3]), 'close':float(x[4]), 'volume':float(x[5])} for x in data]
+    base_urls = [
+        'https://api1.binance.com',
+        'https://api2.binance.com',
+        'https://api3.binance.com',
+        'https://api4.binance.com',
+    ]
+
+    params = urlencode({
+        'symbol': symbol,
+        'interval': interval,
+        'limit': limit
+    })
+
+    last_error = None
+
+    for base in base_urls:
+        try:
+            url = f'{base}/api/v3/klines?{params}'
+            data = http_json(url)
+
+            return [
+                {
+                    'open': float(x[1]),
+                    'high': float(x[2]),
+                    'low': float(x[3]),
+                    'close': float(x[4]),
+                    'volume': float(x[5])
+                }
+                for x in data
+            ]
+
+        except Exception as e:
+            last_error = e
+            continue
+
+    raise RuntimeError(f'Binance crypto feed unavailable: {last_error}')
 
 def fetch_twelve_batch(symbols, interval='15min', outputsize=120):
     if not TWELVE_DATA_API_KEY:
@@ -465,41 +498,4 @@ def payment_amount_verified(payment, actually_paid=None):
         return False
     try:
         expected = Decimal(str(payment.pay_amount))
-        paid = Decimal(str(paid_value))
-        return expected > 0 and paid >= expected
-    except (InvalidOperation, TypeError, ValueError):
-        return False
-
-def activate_subscription(payment):
-    if payment.completed_at: return True
-    plan=PLANS.get(payment.plan_name); user=db.session.get(User,payment.user_id)
-    if not plan or not user: return False
-    if not payment_amount_verified(payment):
-        return False
-    now=datetime.utcnow(); start=user.subscription_expires if user.subscription_expires and user.subscription_expires>now else now
-    user.subscription_expires=start+timedelta(days=plan['days']); user.active_plan=payment.plan_name; payment.payment_status='finished'; payment.completed_at=now; db.session.commit()
-    return True
-
-@app.route('/payment/ipn',methods=['POST'])
-def payment_ipn():
-    data=request.get_json(silent=True) or {}
-    if not verify_ipn(data,request.headers.get('x-nowpayments-sig')): return 'Invalid signature',401
-    pid=str(data.get('payment_id','')); oid=str(data.get('order_id',''))
-    p=Payment.query.filter_by(payment_id=pid).first() if pid else None
-    if not p and oid: p=Payment.query.filter_by(order_id=oid).first()
-    if not p: return 'Unknown payment',404
-    status=str(data.get('payment_status',p.payment_status)).lower(); p.payment_status=status; p.actually_paid=str(data.get('actually_paid',p.actually_paid or '')); p.tx_hash=data.get('payin_hash') or data.get('tx_hash') or p.tx_hash
-    if status=='finished':
-        if not activate_subscription(p):
-            p.payment_status='finished_unpaid'
-            db.session.commit()
-    else: db.session.commit()
-    return 'OK',200
-
-@app.route('/health')
-def health():
-    db_kind = 'postgresql' if str(app.config['SQLALCHEMY_DATABASE_URI']).startswith(('postgresql://','postgresql+')) else 'sqlite'
-    return jsonify(status='ok',service='Velox Trading Labs',database=db_kind,payments_configured=bool(NOWPAYMENTS_API_KEY and NOWPAYMENTS_IPN_SECRET),market_data_configured=bool(TWELVE_DATA_API_KEY),time=datetime.utcnow().isoformat()+'Z')
-
-if __name__=='__main__':
-    app.run(host='0.0.0.0',port=int(os.environ.get('PORT',5000)))
+        paid = Decimal(str(p
