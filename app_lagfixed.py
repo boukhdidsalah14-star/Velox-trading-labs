@@ -498,4 +498,4 @@ def payment_amount_verified(payment, actually_paid=None):
         return False
     try:
         expected = Decimal(str(payment.pay_amount))
-        paid = Decimal(str(p
+        paid = Decimal(str(paid_value))
