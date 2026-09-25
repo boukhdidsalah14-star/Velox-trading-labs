@@ -499,3 +499,9 @@ def payment_amount_verified(payment, actually_paid=None):
     try:
         expected = Decimal(str(payment.pay_amount))
         paid = Decimal(str(paid_value))
+try:
+    expected = Decimal(str(payment.pay_amount))
+    paid = Decimal(str(paid_value))
+    return expected > 0 and paid >= expected
+except (InvalidOperation, TypeError, ValueError):
+    return False
